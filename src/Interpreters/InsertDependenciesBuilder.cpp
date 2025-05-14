@@ -700,12 +700,12 @@ InsertDependenciesBuilder::InsertDependenciesBuilder(StoragePtr table, ASTPtr qu
     , init_context(context)
     , async_insert(async_insert_)
     , skip_destination_table(skip_destination_table_)
-    , allow_materialized(allow_materialized_)
+    // , allow_materialized(allow_materialized_)
     , views_error_registry(std::make_shared<ViewErrorsRegistry>())
     , logger(getLogger("InsertDependenciesBuilder"))
 {
     const auto & settings = init_context->getSettingsRef();
-
+    (void)allow_materialized_;
     const ASTInsertQuery * as_insert_query = init_query->as<ASTInsertQuery>();
     insert_null_as_default = as_insert_query && as_insert_query->select && settings[Setting::insert_null_as_default];
 

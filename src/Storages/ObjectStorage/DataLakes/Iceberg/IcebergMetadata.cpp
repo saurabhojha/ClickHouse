@@ -389,12 +389,13 @@ static std::pair<Int32, String> getLatestOrExplicitMetadataFileAndVersion(
     const ContextPtr & local_context,
     Poco::Logger * log)
 {
-    if (configuration.getSettingsRef()[StorageObjectStorageSetting::iceberg_metadata_file_path].changed)
+    auto x = configuration.getSettingsRef()[StorageObjectStorageSetting::iceberg_metadata_file_path];
+    if (x.changed)
     {
         auto explicit_metadata_path = configuration.getSettingsRef()[StorageObjectStorageSetting::iceberg_metadata_file_path].value;
         try
         {
-            LOG_TEST(log, "Explicit metadata file path is specified {}, will read from this metadata file", explicit_metadata_path);
+            LOG_INFO(log, "Explicit metadata file path is specified {}, will read from this metadata file", explicit_metadata_path);
             std::filesystem::path p(explicit_metadata_path);
             auto it = p.begin();
             if (it != p.end())

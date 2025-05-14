@@ -21,7 +21,7 @@
 
             [1]: https://github.com/pocoproject/poco/blob/poco-1.9.4-release/Foundation/include/Poco/Logger.h#L105-L114
         -->
-        <level>trace</level>
+        <level>information</level>
         <log>/var/log/clickhouse-server/clickhouse-server.log</log>
         <errorlog>/var/log/clickhouse-server/clickhouse-server.err.log</errorlog>
         <!-- Rotation policy
@@ -143,7 +143,7 @@
          This interface is also used by ODBC and JDBC drivers (DataGrip, Dbeaver, ...)
          and by most of the web interfaces (embedded UI, Grafana, Redash, ...).
       -->
-    <http_port>8123</http_port>
+    <http_port>9021</http_port>
 
     <!-- Port for interaction by native protocol with:
          - clickhouse-client and other native ClickHouse tools (clickhouse-benchmark);
@@ -152,7 +152,7 @@
          (this protocol is also informally called as "the TCP protocol");
          See also 'tcp_port_secure' for secure connections.
     -->
-    <tcp_port>9000</tcp_port>
+    <tcp_port>9020</tcp_port>
 
     <!-- Chunked capabilities for native protocol by server.
          Can be enabled separately for send and receive channels.

@@ -78,7 +78,7 @@ void TableMetadata::setLocation(const std::string & location_)
     path = location_.substr(pos_to_path + 1);
     bucket = location_.substr(pos_to_bucket, pos_to_path - pos_to_bucket);
 
-    LOG_TEST(getLogger("TableMetadata"),
+    LOG_INFO(getLogger("TableMetadata"),
              "Parsed location without path: {}, path: {}",
              location_without_path, path);
 }

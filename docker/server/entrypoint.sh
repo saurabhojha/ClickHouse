@@ -271,7 +271,7 @@ if [[ $# -lt 1 ]] || [[ "$1" == "--"* ]]; then
     init_clickhouse_db
 
     # This replaces the shell script with the server:
-    exec clickhouse su "${USER}:${GROUP}" clickhouse-server --config-file="$CLICKHOUSE_CONFIG" "$@"
+    exec clickhouse su "${USER}:${GROUP}" clickhouse --server --config-file="$CLICKHOUSE_CONFIG" "$@"
 fi
 
 # Otherwise, we assume the user want to run his own process, for example a `bash` shell to explore this image

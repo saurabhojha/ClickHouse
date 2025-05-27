@@ -464,7 +464,7 @@ if __name__ == "__main__":
     )
 
     cmd_base = (
-        f"docker run {net} {tty} --rm --name {CONTAINER_NAME} "
+        f"docker run --platform=linux/arm64 {net} {tty} --rm --name {CONTAINER_NAME} "
         "--privileged --dns-search='.' "  # since recent dns search leaks from host
         f"--memory={args.memory} "
         f"--security-opt seccomp=unconfined "

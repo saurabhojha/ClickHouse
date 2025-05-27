@@ -1665,7 +1665,7 @@ class ClickHouseCluster:
         zookeeper_docker_compose_path=None,
         minio_certs_dir=None,
         minio_data_dir=None,
-        use_keeper=True,
+        use_keeper=False,
         keeper_randomize_feature_flags=True,
         keeper_required_feature_flags=[],
         main_config_name="config.xml",

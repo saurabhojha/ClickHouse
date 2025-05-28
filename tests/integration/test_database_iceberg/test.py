@@ -299,7 +299,7 @@ def test_many_namespaces(started_cluster,catalog_config):
     catalog = load_catalog_impl(started_cluster,catalog_config)
 
     for namespace in namespaces:
-        catalog.create_namespace(namespace)
+        create_catalog_namespace(catalog,catalog_config, namespace)
         for table in tables:
             create_table(catalog, namespace, table)
 
@@ -333,7 +333,7 @@ def test_select(started_cluster,catalog_config):
     catalog = load_catalog_impl(started_cluster,catalog_config)
 
     for namespace in namespaces_to_create:
-        catalog.create_namespace(namespace)
+        create_catalog_namespace(catalog,catalog_config, namespace)
         assert len(catalog.list_tables(namespace)) == 0
 
     table = create_table(catalog, namespace, table_name)
@@ -364,7 +364,7 @@ def test_hide_sensitive_info(started_cluster,catalog_config):
 
     namespace = f"{root_namespace}.A"
     catalog = load_catalog_impl(started_cluster,catalog_config)
-    catalog.create_namespace(namespace)
+    create_catalog_namespace(catalog,catalog_config, namespace)
 
     table = create_table(catalog, namespace, table_name)
 
@@ -397,7 +397,7 @@ def test_tables_with_same_location(started_cluster,catalog_config):
     table_name = f"{test_ref}_table"
     table_name_2 = f"{test_ref}_table_2"
 
-    catalog.create_namespace(namespace)
+    create_catalog_namespace(catalog,catalog_config, namespace)
     table = create_table(catalog, namespace, table_name)
     table_2 = create_table(catalog, namespace, table_name_2)
 

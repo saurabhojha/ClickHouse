@@ -157,8 +157,9 @@ def print_objects():
 
 
 @pytest.fixture(scope="module")
-def started_cluster():
+def started_cluster(request):
     try:
+        filename = request.param
         cluster = ClickHouseCluster(__file__)
         cluster.add_instance(
             "node1",
@@ -166,6 +167,7 @@ def started_cluster():
             user_configs=[],
             stay_alive=True,
             with_iceberg_catalog=True,
+            extra_parameters={"docker_compose_file_name":filename}
         )
 
         logging.info("Starting cluster...")

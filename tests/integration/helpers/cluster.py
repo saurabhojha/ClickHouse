@@ -1460,14 +1460,17 @@ class ClickHouseCluster:
 
 
     def setup_iceberg_catalog_cmd(
-        self, instance, env_variables, docker_compose_yml_dir
+        self, instance, env_variables, docker_compose_yml_dir,extra_parameters=None
     ):
         self.with_iceberg_catalog = True
+        file_name = "docker_compose_iceberg_rest_catalog.yml"
+        if extra_parameters is not None and extra_parameters["docker_compose_file_name"] != "":
+            file_name = extra_parameters["docker_compose_file_name"]
         self.base_cmd.extend(
             [
                 "--file",
                 p.join(
-                    docker_compose_yml_dir, "docker_compose_iceberg_rest_catalog.yml"
+                    docker_compose_yml_dir, file_name
                 ),
             ]
         )
@@ -1475,7 +1478,7 @@ class ClickHouseCluster:
             "--env-file",
             instance.env_file,
             "--file",
-            p.join(docker_compose_yml_dir, "docker_compose_iceberg_rest_catalog.yml"),
+            p.join(docker_compose_yml_dir, file_name),
         )
         return self.base_iceberg_catalog_cmd
 
@@ -1681,6 +1684,8 @@ class ClickHouseCluster:
         randomize_settings=True,
         use_docker_init_flag=False,
         clickhouse_start_cmd=CLICKHOUSE_START_COMMAND,
+        # Extra parameters to tune setup cmds before setting up containers
+        extra_parameters=None,
     ) -> "ClickHouseInstance":
         """Add an instance to the cluster.
 
@@ -1802,6 +1807,7 @@ class ClickHouseCluster:
             extra_configs=extra_configs,
             randomize_settings=randomize_settings,
             use_docker_init_flag=use_docker_init_flag,
+            extra_parameters=extra_parameters,
         )
 
         docker_compose_yml_dir = get_docker_compose_path()
@@ -1960,7 +1966,7 @@ class ClickHouseCluster:
         if with_iceberg_catalog and not self.with_iceberg_catalog:
             cmds.append(
                 self.setup_iceberg_catalog_cmd(
-                    instance, env_variables, docker_compose_yml_dir
+                    instance, env_variables, docker_compose_yml_dir, extra_parameters
                 )
             )
 
@@ -3623,6 +3629,7 @@ class ClickHouseInstance:
         extra_configs=[],
         randomize_settings=True,
         use_docker_init_flag=False,
+        extra_parameters=None,
     ):
         self.name = name
         self.base_cmd = cluster.base_cmd

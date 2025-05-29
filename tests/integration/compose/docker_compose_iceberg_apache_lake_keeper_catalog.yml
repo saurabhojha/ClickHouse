@@ -1,0 +1,120 @@
+services:
+  rest:
+    image: quay.io/lakekeeper/catalog:latest-main
+    environment:
+      - LAKEKEEPER__PG_ENCRYPTION_KEY=This-is-NOT-Secure!
+      - LAKEKEEPER__PG_DATABASE_URL_READ=postgresql://postgres:postgres@db:5432/postgres
+      - LAKEKEEPER__PG_DATABASE_URL_WRITE=postgresql://postgres:postgres@db:5432/postgres
+      - RUST_LOG=trace,axum=trace,sqlx=trace,iceberg-catalog=trace
+    command: [ "serve" ]
+    healthcheck:
+      test: [ "CMD", "/home/nonroot/iceberg-catalog", "healthcheck" ]
+      interval: 1s
+      timeout: 10s
+      retries: 3
+      start_period: 3s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    ports:
+      - "8181:8181"
+
+  migrate:
+    image: quay.io/lakekeeper/catalog:latest-main
+    pull_policy: always
+    environment:
+      - LAKEKEEPER__PG_ENCRYPTION_KEY=This-is-NOT-Secure!
+      - LAKEKEEPER__PG_DATABASE_URL_READ=postgresql://postgres:postgres@db:5432/postgres
+      - LAKEKEEPER__PG_DATABASE_URL_WRITE=postgresql://postgres:postgres@db:5432/postgres
+      - RUST_LOG=info
+    restart: "no"
+    command: [ "migrate" ]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  init:
+    image: curlimages/curl
+    depends_on:
+      rest:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: [ "sh", "-c" ]
+    command: >
+      set -e &&
+      echo "Bootstrapping..." &&
+      curl -w "%{http_code}" -X POST -v http://rest:8181/management/v1/bootstrap \
+        -H "Content-Type: application/json" \
+        -d '{"accept-terms-of-use": true}' -o /dev/null &&
+      echo "Creating default warehouse..." &&
+      curl -w "%{http_code}" -X POST -v http://rest:8181/management/v1/warehouse \
+        -H "Content-Type: application/json" \
+        -d '{
+          "warehouse-name": "demo",
+          "project-id": "00000000-0000-0000-0000-000000000000",
+          "storage-profile": {
+            "type": "s3",
+            "bucket": "examples",
+            "key-prefix": "",
+            "assume-role-arn": null,
+            "endpoint": "http://minio:9000",
+            "region": "us-east-1",
+            "path-style-access": true,
+            "flavor": "minio",
+            "sts-enabled": true
+          },
+          "storage-credential": {
+            "type": "s3",
+            "credential-type": "access-key",
+            "aws-access-key-id": "minio",
+            "aws-secret-access-key": "ClickHouse_Minio_P@ssw0rd"
+          }
+        }' -o /dev/null
+
+  db:
+    image: bitnami/postgresql:16.3.0
+    environment:
+      - POSTGRESQL_USERNAME=postgres
+      - POSTGRESQL_PASSWORD=postgres
+      - POSTGRESQL_DATABASE=postgres
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -p 5432 -d postgres" ]
+      interval: 2s
+      timeout: 10s
+      retries: 2
+      start_period: 10s
+
+  minio:
+    image: minio/minio:RELEASE.2024-07-31T05-46-26Z
+    environment:
+      - MINIO_ROOT_USER=minio
+      - MINIO_ROOT_PASSWORD=ClickHouse_Minio_P@ssw0rd
+      - MINIO_DOMAIN=minio
+    networks:
+      default:
+        aliases:
+          - warehouse-rest.minio
+    ports:
+      - 9001
+      - 9000
+    command: [ "server", "/data", "--console-address", ":9001" ]
+  # TODO: move this code to cluster.py
+  mc:
+    depends_on:
+      - minio
+    # Stick to version with "mc config"
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    environment:
+      - AWS_ACCESS_KEY_ID=minio
+      - AWS_SECRET_ACCESS_KEY=ClickHouse_Minio_P@ssw0rd
+      - AWS_REGION=us-east-1
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc config host add minio http://minio:9000 minio ClickHouse_Minio_P@ssw0rd) do echo '...waiting...' && sleep 1; done;
+      /usr/bin/mc rm -r --force minio/warehouse-rest;
+      /usr/bin/mc mb minio/warehouse-rest --ignore-existing;
+      /usr/bin/mc policy set public minio/warehouse-rest;
+      tail -f /dev/null
+      "

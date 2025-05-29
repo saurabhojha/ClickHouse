@@ -105,6 +105,15 @@ def catalog_config(request):
             DOCKER_COMPOSE_FILE = "docker_compose_iceberg_nessie_rest_catalog.yml",
             CATALOG_NAME = "demo"
         )
+    elif catalog_type == "apache_lakekeeper_rest":
+        return CatalogConfig(
+            CATALOG_TYPE = "apache_lakekeeper_rest",
+            BASE_URL = "http://rest:8181/catalog/v1",
+            BASE_URL_LOCAL = "http://localhost:8181/catalog/v1",
+            BASE_URL_LOCAL_RAW = "http://localhost:8181/catalog",
+            DOCKER_COMPOSE_FILE = "docker_compose_iceberg_apache_lake_keeper_catalog.yml",
+            CATALOG_NAME = "demo"
+        )
 
     raise ValueError(f"Unsupported catalog type: {catalog_type}")
 

@@ -44,6 +44,14 @@ class CatalogConfig:
     DOCKER_COMPOSE_FILE: str
     CATALOG_NAME: str
 
+catalog_config = CatalogConfig(
+    CATALOG_TYPE = "apache_lake_keeper_rest",
+    BASE_URL = "http://rest:19120/catalog/v1",
+    BASE_URL_LOCAL = "http://localhost:19120/catalog",
+    BASE_URL_LOCAL_RAW = "http://localhost:19120/catalog",
+    DOCKER_COMPOSE_FILE = "docker_compose_iceberg_apache_lake_keeper_catalog.yml",
+    CATALOG_NAME = "demo"
+)
 
 DEFAULT_SCHEMA = Schema(
     NestedField(
@@ -84,40 +92,7 @@ def list_namespaces(catalog_confg):
     else:
         raise Exception(f"Failed to list namespaces: {response.status_code}")
 
-@pytest.fixture(scope="module")
-def catalog_config(request):
-    catalog_type = request.param
-    if catalog_type == "spec_rest":
-        return CatalogConfig(
-            CATALOG_TYPE = "spec_rest",
-            BASE_URL = "http://rest:8181/v1",
-            BASE_URL_LOCAL = "http://localhost:8182/v1",
-            BASE_URL_LOCAL_RAW = "http://localhost:8182",
-            DOCKER_COMPOSE_FILE =  "docker_compose_iceberg_rest_catalog.yml",
-            CATALOG_NAME = "demo"
-        )
-    elif catalog_type == "nessie_rest":
-        return CatalogConfig(
-            CATALOG_TYPE = "nessie_rest",
-            BASE_URL = "http://rest:19120/iceberg/v1",
-            BASE_URL_LOCAL = "http://localhost:19120/iceberg/v1/main",
-            BASE_URL_LOCAL_RAW = "http://localhost:19120/iceberg",
-            DOCKER_COMPOSE_FILE = "docker_compose_iceberg_nessie_rest_catalog.yml",
-            CATALOG_NAME = "demo"
-        )
-    elif catalog_type == "apache_lakekeeper_rest":
-        return CatalogConfig(
-            CATALOG_TYPE = "apache_lakekeeper_rest",
-            BASE_URL = "http://rest:8181/catalog/v1",
-            BASE_URL_LOCAL = "http://localhost:8181/catalog/v1",
-            BASE_URL_LOCAL_RAW = "http://localhost:8181/catalog",
-            DOCKER_COMPOSE_FILE = "docker_compose_iceberg_apache_lake_keeper_catalog.yml",
-            CATALOG_NAME = "demo"
-        )
-
-    raise ValueError(f"Unsupported catalog type: {catalog_type}")
-
-def load_catalog_impl(started_cluster,catalog_config):
+def load_catalog_impl(started_cluster):
     return load_catalog(
         catalog_config.CATALOG_NAME,
         **{
@@ -192,13 +167,13 @@ def create_namespace_recursively(catalog, namespace: str):
             logging.info(f"Exception while creating namespace: {str(e)}")
             pass
 
-def create_catalog_namespace(catalog,catalog_config, namespace: str):
+def create_catalog_namespace(catalog, namespace: str):
     if catalog_config.CATALOG_TYPE == "nessie_rest":
         return create_namespace_recursively(catalog, namespace)
     return catalog.create_namespace(namespace)
 
 @pytest.fixture(scope="module")
-def started_cluster(catalog_config):
+def started_cluster():
     try:
         cluster = ClickHouseCluster(__file__)
         cluster.add_instance(
@@ -222,7 +197,7 @@ def started_cluster(catalog_config):
         cluster.shutdown()
 
 
-def test_list_tables(started_cluster,catalog_config):
+def test_list_tables(started_cluster):
     node = started_cluster.instances["node1"]
 
     root_namespace = f"clickhouse_{uuid.uuid4()}"
@@ -231,10 +206,10 @@ def test_list_tables(started_cluster,catalog_config):
     namespace_1_tables = ["tableA", "tableB"]
     namespace_2_tables = ["tableC", "tableD"]
 
-    catalog = load_catalog_impl(started_cluster,catalog_config)
+    catalog = load_catalog_impl(started_cluster)
 
     for namespace in [namespace_1, namespace_2]:
-        create_catalog_namespace(catalog,catalog_config, namespace)
+        create_catalog_namespace(catalog, namespace)
 
     found = False
     for namespace_list in list_namespaces(catalog_config)["namespaces"]:
@@ -291,7 +266,7 @@ def test_list_tables(started_cluster,catalog_config):
     )
 
 
-def test_many_namespaces(started_cluster,catalog_config):
+def test_many_namespaces(started_cluster):
     node = started_cluster.instances["node1"]
     root_namespace_1 = f"A_{uuid.uuid4()}"
     root_namespace_2 = f"B_{uuid.uuid4()}"
@@ -305,10 +280,10 @@ def test_many_namespaces(started_cluster,catalog_config):
         f"{root_namespace_2}.CC",
     ]
     tables = ["A", "B", "C"]
-    catalog = load_catalog_impl(started_cluster,catalog_config)
+    catalog = load_catalog_impl(started_cluster)
 
     for namespace in namespaces:
-        create_catalog_namespace(catalog,catalog_config, namespace)
+        create_catalog_namespace(catalog, namespace)
         for table in tables:
             create_table(catalog, namespace, table)
 
@@ -324,7 +299,7 @@ def test_many_namespaces(started_cluster,catalog_config):
             )
 
 
-def test_select(started_cluster,catalog_config):
+def test_select(started_cluster):
     node = started_cluster.instances["node1"]
 
     test_ref = f"test_list_tables_{uuid.uuid4()}"
@@ -339,10 +314,10 @@ def test_select(started_cluster,catalog_config):
         f"{root_namespace}.A.B.C",
     ]
 
-    catalog = load_catalog_impl(started_cluster,catalog_config)
+    catalog = load_catalog_impl(started_cluster)
 
     for namespace in namespaces_to_create:
-        create_catalog_namespace(catalog,catalog_config, namespace)
+        create_catalog_namespace(catalog, namespace)
         assert len(catalog.list_tables(namespace)) == 0
 
     table = create_table(catalog, namespace, table_name)
@@ -364,7 +339,7 @@ def test_select(started_cluster,catalog_config):
     )
 
 
-def test_hide_sensitive_info(started_cluster,catalog_config):
+def test_hide_sensitive_info(started_cluster):
     node = started_cluster.instances["node1"]
 
     test_ref = f"test_hide_sensitive_info_{uuid.uuid4()}"
@@ -372,8 +347,8 @@ def test_hide_sensitive_info(started_cluster,catalog_config):
     root_namespace = f"{test_ref}_namespace"
 
     namespace = f"{root_namespace}.A"
-    catalog = load_catalog_impl(started_cluster,catalog_config)
-    create_catalog_namespace(catalog,catalog_config, namespace)
+    catalog = load_catalog_impl(started_cluster)
+    create_catalog_namespace(catalog, namespace)
 
     table = create_table(catalog, namespace, table_name)
 
@@ -396,17 +371,17 @@ def test_hide_sensitive_info(started_cluster,catalog_config):
     assert "SECRET_2" not in node.query(f"SHOW CREATE DATABASE {catalog_config.CATALOG_NAME}")
 
 
-def test_tables_with_same_location(started_cluster,catalog_config):
+def test_tables_with_same_location(started_cluster):
     node = started_cluster.instances["node1"]
 
     test_ref = f"test_tables_with_same_location_{uuid.uuid4()}"
     namespace = f"{test_ref}_namespace"
-    catalog = load_catalog_impl(started_cluster,catalog_config)
+    catalog = load_catalog_impl(started_cluster)
 
     table_name = f"{test_ref}_table"
     table_name_2 = f"{test_ref}_table_2"
 
-    create_catalog_namespace(catalog,catalog_config, namespace)
+    create_catalog_namespace(catalog, namespace)
     table = create_table(catalog, namespace, table_name)
     table_2 = create_table(catalog, namespace, table_name_2)
 

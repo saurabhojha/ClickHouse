@@ -1463,10 +1463,8 @@ class ClickHouseCluster:
         self, instance, env_variables, docker_compose_yml_dir,extra_parameters=None
     ):
         self.with_iceberg_catalog = True
-        file_name = ""
-        if extra_parameters is None:
-            file_name = "docker_compose_iceberg_rest_catalog.yml"
-        elif extra_parameters["docker_compose_file_name"] != "":
+        file_name = "docker_compose_iceberg_rest_catalog.yml"
+        if extra_parameters is not None and extra_parameters["docker_compose_file_name"] != "":
             file_name = extra_parameters["docker_compose_file_name"]
         self.base_cmd.extend(
             [

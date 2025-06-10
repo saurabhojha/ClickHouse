@@ -6,20 +6,32 @@ services:
       - LAKEKEEPER__PG_DATABASE_URL_READ=postgresql://postgres:postgres@db:5432/postgres
       - LAKEKEEPER__PG_DATABASE_URL_WRITE=postgresql://postgres:postgres@db:5432/postgres
       - RUST_LOG=trace,axum=trace,sqlx=trace,iceberg-catalog=trace
+      # Authorization Backend - OpenFGA
+      - LAKEKEEPER__AUTHZ_BACKEND=openfga
+      - LAKEKEEPER__OPENFGA__ENDPOINT=http://openfga:8081
+      - LAKEKEEPER__OPENFGA__CLIENT_ID=openfga
+      - LAKEKEEPER__OPENFGA__CLIENT_SECRET=xqE1vUrifVDKAZdLuz6JAnDxMYLdGu5z
+      - LAKEKEEPER__OPENFGA__TOKEN_ENDPOINT=http://keycloak:8080/realms/iceberg/protocol/openid-connect/token
+      # OpenID/OAuth2 Configuration (following official Lakekeeper example)
+      - LAKEKEEPER__OPENID_PROVIDER_URI=http://keycloak:8080/realms/iceberg
+      - LAKEKEEPER__OPENID_AUDIENCE=lakekeeper
+      - LAKEKEEPER__OPENID_ADDITIONAL_ISSUERS=http://localhost:30080/realms/iceberg
+      - LAKEKEEPER__UI__OPENID_CLIENT_ID=lakekeeper
+      - LAKEKEEPER__UI__OPENID_PROVIDER_URI=http://localhost:30080/realms/iceberg
     command: [ "serve" ]
-    healthcheck:
-      test: [ "CMD", "/home/nonroot/iceberg-catalog", "healthcheck" ]
-      interval: 1s
-      timeout: 10s
-      retries: 3
-      start_period: 3s
     depends_on:
       migrate:
         condition: service_completed_successfully
       db:
         condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      openfga:
+        condition: service_healthy
+      openfga-init:
+        condition: service_completed_successfully
     ports:
-      - "8181:8181"
+      - "19120:8181"
 
   migrate:
     image: quay.io/lakekeeper/catalog:latest-main
@@ -29,49 +41,23 @@ services:
       - LAKEKEEPER__PG_DATABASE_URL_READ=postgresql://postgres:postgres@db:5432/postgres
       - LAKEKEEPER__PG_DATABASE_URL_WRITE=postgresql://postgres:postgres@db:5432/postgres
       - RUST_LOG=info
+      # Authorization Backend - OpenFGA (needed for migration to set up auth model)
+      - LAKEKEEPER__AUTHZ_BACKEND=openfga
+      - LAKEKEEPER__OPENFGA__ENDPOINT=http://openfga:8081
+      - LAKEKEEPER__OPENFGA__CLIENT_ID=openfga
+      - LAKEKEEPER__OPENFGA__CLIENT_SECRET=xqE1vUrifVDKAZdLuz6JAnDxMYLdGu5z
+      - LAKEKEEPER__OPENFGA__TOKEN_ENDPOINT=http://keycloak:8080/realms/iceberg/protocol/openid-connect/token
     restart: "no"
     command: [ "migrate" ]
     depends_on:
       db:
         condition: service_healthy
-
-  init:
-    image: curlimages/curl
-    depends_on:
-      rest:
+      keycloak:
         condition: service_healthy
-    restart: "no"
-    entrypoint: [ "sh", "-c" ]
-    command: >
-      set -e &&
-      echo "Bootstrapping..." &&
-      curl -w "%{http_code}" -X POST -v http://rest:8181/management/v1/bootstrap \
-        -H "Content-Type: application/json" \
-        -d '{"accept-terms-of-use": true}' -o /dev/null &&
-      echo "Creating default warehouse..." &&
-      curl -w "%{http_code}" -X POST -v http://rest:8181/management/v1/warehouse \
-        -H "Content-Type: application/json" \
-        -d '{
-          "warehouse-name": "demo",
-          "project-id": "00000000-0000-0000-0000-000000000000",
-          "storage-profile": {
-            "type": "s3",
-            "bucket": "examples",
-            "key-prefix": "",
-            "assume-role-arn": null,
-            "endpoint": "http://minio:9000",
-            "region": "us-east-1",
-            "path-style-access": true,
-            "flavor": "minio",
-            "sts-enabled": true
-          },
-          "storage-credential": {
-            "type": "s3",
-            "credential-type": "access-key",
-            "aws-access-key-id": "minio",
-            "aws-secret-access-key": "ClickHouse_Minio_P@ssw0rd"
-          }
-        }' -o /dev/null
+      openfga:
+        condition: service_healthy
+      openfga-init:
+        condition: service_completed_successfully
 
   db:
     image: bitnami/postgresql:16.3.0
@@ -85,6 +71,117 @@ services:
       timeout: 10s
       retries: 2
       start_period: 10s
+
+  # OpenFGA Database (separate from main Lakekeeper DB)
+  openfga-db:
+    image: bitnami/postgresql:16.3.0
+    environment:
+      - POSTGRESQL_USERNAME=postgres
+      - POSTGRESQL_PASSWORD=postgres
+      - POSTGRESQL_DATABASE=postgres
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -p 5432 -d postgres" ]
+      interval: 2s
+      timeout: 10s
+      retries: 2
+      start_period: 10s
+
+  # OpenFGA Migration
+  openfga-migrate:
+    image: openfga/openfga:v1.8
+    command: migrate
+    environment:
+      - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_URI=postgres://postgres:postgres@openfga-db:5432/postgres?sslmode=disable
+    depends_on:
+      openfga-db:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
+  # OpenFGA Authorization Service
+  openfga:
+    depends_on:
+      openfga-db:
+        condition: service_healthy
+      openfga-migrate:
+        condition: service_completed_successfully
+    image: openfga/openfga:v1.8
+    command: run
+    environment:
+      - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_URI=postgres://postgres:postgres@openfga-db:5432/postgres?sslmode=disable
+      - OPENFGA_DATASTORE_MAX_OPEN_CONNS=50
+      - OPENFGA_PLAYGROUND_ENABLED=false
+      - OPENFGA_AUTHN_METHOD=oidc
+      - OPENFGA_AUTHN_OIDC_ISSUER=http://keycloak:8080/realms/iceberg
+      - OPENFGA_AUTHN_OIDC_ISSUER_ALIASES=http://localhost:30080/realms/iceberg
+      - OPENFGA_AUTHN_OIDC_AUDIENCE=openfga
+      - OPENFGA_HTTP_TLS_ENABLED=false
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/usr/local/bin/grpc_health_probe",
+          "-addr=openfga:8081"
+        ]
+      interval: 5s
+      timeout: 30s
+      retries: 3
+
+  # OpenFGA Store Initialization
+  openfga-init:
+    image: curlimages/curl:latest
+    depends_on:
+      openfga:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    command: >
+      sh -c '
+        echo "Getting OpenFGA client token..."
+        
+        ACCESS_TOKEN=$$(curl -s -X POST "http://keycloak:8080/realms/iceberg/protocol/openid-connect/token" \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          -d "grant_type=client_credentials" \
+          -d "client_id=openfga" \
+          -d "client_secret=xqE1vUrifVDKAZdLuz6JAnDxMYLdGu5z" | \
+          grep -o "\"access_token\":\"[^\"]*\"" | cut -d":" -f2 | tr -d "\""
+        )
+        
+        if [ -z "$$ACCESS_TOKEN" ]; then
+          echo "Failed to get access token"
+          exit 1
+        fi
+        
+        echo "Checking if OpenFGA store already exists..."
+        
+        EXISTING_STORES=$$(curl -s -X GET "http://openfga:8080/stores" \
+          -H "Authorization: Bearer $$ACCESS_TOKEN")
+        
+        echo "Existing stores response: $$EXISTING_STORES"
+        
+        if echo "$$EXISTING_STORES" | grep -q "\"name\":\"lakekeeper\""; then
+          echo "OpenFGA store \"lakekeeper\" already exists"
+        else
+          echo "Creating OpenFGA store..."
+          
+          STORE_RESPONSE=$$(curl -s -X POST "http://openfga:8080/stores" \
+            -H "Authorization: Bearer $$ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\": \"lakekeeper\"}")
+          
+          echo "Store creation response: $$STORE_RESPONSE"
+          
+          if echo "$$STORE_RESPONSE" | grep -q "\"id\""; then
+            echo " OpenFGA store created successfully"
+          else
+            echo " Failed to create OpenFGA store"
+            exit 1
+          fi
+        fi
+      '
+    restart: "no"
 
   minio:
     image: minio/minio:RELEASE.2024-07-31T05-46-26Z
@@ -118,3 +215,37 @@ services:
       /usr/bin/mc policy set public minio/warehouse-rest;
       tail -f /dev/null
       "
+
+  # Keycloak Authentication Service (following official Lakekeeper example)
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    environment:
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://db:5432/postgres
+      - KC_DB_USERNAME=postgres
+      - KC_DB_PASSWORD=postgres
+      - KC_HOSTNAME_STRICT=false
+      - KC_HTTP_ENABLED=true
+      - KC_HOSTNAME_STRICT_HTTPS=false
+    command:
+      - start-dev
+      - --metrics-enabled=true
+      - --health-enabled=true
+      - --import-realm
+    ports:
+      - "30080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - 'exec 3<>/dev/tcp/127.0.0.1/8080;echo -e "GET /realms/master/.well-known/openid-configuration HTTP/1.1\r\nhost: 127.0.0.1:8080\r\nConnection: close\r\n\r\n" >&3;grep "jwks_uri"  <&3'
+      interval: 2s
+      timeout: 80s
+      retries: 10
+      start_period: 60s
+    volumes:
+      - ./lakekeeper-realm.json:/opt/keycloak/data/import/realm.json

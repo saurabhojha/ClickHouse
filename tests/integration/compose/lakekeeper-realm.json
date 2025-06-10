@@ -1,0 +1,161 @@
+{
+  "realm": "iceberg",
+  "enabled": true,
+  "displayName": "Iceberg Catalog Realm",
+  "registrationAllowed": false,
+  "rememberMe": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "clients": [
+    {
+      "clientId": "lakekeeper",
+      "name": "Lakekeeper Catalog",
+      "description": "Lakekeeper UI and API Client",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "redirectUris": ["*"],
+      "webOrigins": ["*"],
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "protocol": "openid-connect",
+      "attributes": {
+        "oauth2.device.authorization.grant.enabled": "true",
+        "backchannel.logout.session.required": "true",
+        "display.on.consent.screen": "false",
+        "backchannel.logout.revoke.offline.tokens": "false"
+      },
+      "fullScopeAllowed": true,
+      "defaultClientScopes": ["web-origins", "acr", "lakekeeper", "roles", "profile", "basic", "email"],
+      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt"]
+    },
+    {
+      "clientId": "pyiceberg",
+      "name": "PyIceberg Client",
+      "description": "Machine client for PyIceberg testing",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "pyiceberg-secret-key",
+      "redirectUris": ["/*"],
+      "webOrigins": ["/*"],
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "frontchannelLogout": true,
+      "protocol": "openid-connect",
+      "attributes": {
+        "backchannel.logout.session.required": "true",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "display.on.consent.screen": "false",
+        "backchannel.logout.revoke.offline.tokens": "false"
+      },
+      "fullScopeAllowed": true,
+      "defaultClientScopes": ["web-origins", "acr", "roles", "profile", "basic", "email"],
+      "optionalClientScopes": ["lakekeeper", "address", "phone", "offline_access", "microprofile-jwt"]
+    },
+    {
+      "clientId": "openfga",
+      "name": "OpenFGA Authorization Service",
+      "description": "Machine client for OpenFGA authorization backend",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "xqE1vUrifVDKAZdLuz6JAnDxMYLdGu5z",
+      "redirectUris": ["/*"],
+      "webOrigins": ["/*"],
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "frontchannelLogout": true,
+      "protocol": "openid-connect",
+      "attributes": {
+        "backchannel.logout.session.required": "true",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "display.on.consent.screen": "false",
+        "backchannel.logout.revoke.offline.tokens": "false"
+      },
+      "fullScopeAllowed": true,
+      "defaultClientScopes": ["web-origins", "acr", "roles", "profile", "basic", "email", "openfga"],
+      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt"]
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "lakekeeper",
+      "description": "Client of Lakekeeper",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "Add lakekeeper Audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "lakekeeper",
+            "id.token.claim": "false",
+            "lightweight.claim": "false",
+            "introspection.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "name": "openfga",
+      "description": "OpenFGA Authorization Service",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "Add openfga Audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "openfga",
+            "id.token.claim": "false",
+            "lightweight.claim": "false",
+            "introspection.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-pyiceberg",
+      "emailVerified": false,
+      "enabled": true,
+      "serviceAccountClientId": "pyiceberg",
+      "realmRoles": ["default-roles-iceberg"]
+    },
+    {
+      "username": "service-account-openfga",
+      "emailVerified": false,
+      "enabled": true,
+      "serviceAccountClientId": "openfga",
+      "realmRoles": ["default-roles-iceberg"]
+    }
+  ],
+  "defaultDefaultClientScopes": ["profile", "email", "roles", "web-origins", "acr", "basic"],
+  "defaultOptionalClientScopes": ["offline_access", "address", "phone", "microprofile-jwt", "lakekeeper", "openfga"]
+} 

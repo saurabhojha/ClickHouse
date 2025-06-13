@@ -18,10 +18,14 @@ from pyiceberg.types import (
 
 from helpers.cluster import ClickHouseCluster
 from helpers.config_cluster import minio_secret_key, minio_access_key
+from helpers.test_tools import TSV, csv_compare
 
 BASE_URL_LOCAL = "http://localhost:8181/catalog"
+BASE_URL = "http://lakekeeper:8181/catalog"
 CATALOG_NAME = "demo"
 WAREHOUSE_NAME = "demo"
+
+DEFAULT_CREATE_TABLE = "CREATE TABLE {}.`{}.{}`\n(\n    `id` Nullable(Float64),\n    `data` Nullable(String)\n)\nENGINE = Iceberg('http://minio:9000/warehouse-rest/data/', 'minio', '[HIDDEN]')\n"
 
 
 def create_warehouse(minio_ip):
@@ -38,7 +42,7 @@ def create_warehouse(minio_ip):
         "storage-profile": {
             "type": "s3",
             "bucket": "warehouse-rest",
-            "key-prefix": "initial-warehouse",
+            "key-prefix": "",
             "assume-role-arn": None,
             "endpoint": minio_endpoint,
             "region": "local-01",
@@ -142,6 +146,8 @@ def started_cluster():
 def test_pyiceberg_standalone(started_cluster):
     """Test PyIceberg operations with Lakekeeper catalog"""
     import pandas as pd
+
+    node = started_cluster.instances["node1"]
     
     logging.info("Starting PyIceberg standalone test...")
     logging.debug(f"MinIO endpoint: {started_cluster.get_instance_ip('minio')}:9000")
@@ -187,6 +193,7 @@ def test_pyiceberg_standalone(started_cluster):
     table = catalog.create_table(
         test_table_identifier,
         schema=simple_schema,
+        properties={"write.metadata.compression-codec": "none"},
     )
     logging.info(f"✓ Created table: {test_table_identifier}")
     logging.debug(f"Table metadata location: {table.metadata_location}")
@@ -228,3 +235,46 @@ def test_pyiceberg_standalone(started_cluster):
     logging.info(f"✓ Tables in {test_namespace}: {tables}")
     
     logging.info("✓ Complete PyIceberg + Lakekeeper test passed!")
+    
+    # Test ClickHouse integration with Lakekeeper catalog
+    logging.info("🔄 Testing ClickHouse integration with Lakekeeper catalog...")
+
+    create_clickhouse_iceberg_database(started_cluster, node, CATALOG_NAME)
+
+    # Instead of SHOW CREATE TABLE assertion, check row count and content
+    assert 5 == int(node.query("SELECT count(*) FROM demo.`test_standalone.my_table`"))
+
+    result = node.query("SELECT id, data FROM demo.`test_standalone.my_table` ORDER BY id FORMAT TSV")
+    expected = TSV("""
+1   hello
+2	world
+3	from
+4	lakekeeper
+5	test
+""")
+    assert csv_compare(result, expected), f"got\n{result}\nwant\n{expected}"
+
+
+def create_clickhouse_iceberg_database(
+    started_cluster, node, name, additional_settings={}
+):
+    settings = {
+        "catalog_type": "rest",
+        "warehouse": "demo",
+        "storage_endpoint": "http://minio:9000/warehouse-rest",
+    }
+
+    settings.update(additional_settings)
+
+    node.query(
+        f"""
+DROP DATABASE IF EXISTS {name};
+SET allow_experimental_database_iceberg=true;
+CREATE DATABASE {name} ENGINE = DataLakeCatalog('{BASE_URL}', 'minio', '{minio_secret_key}')
+SETTINGS {",".join((k+"="+repr(v) for k, v in settings.items()))}
+    """
+    )
+    show_result = node.query(f"SHOW DATABASE {name}")
+    assert minio_secret_key not in show_result
+    assert "HIDDEN" in show_result
+    

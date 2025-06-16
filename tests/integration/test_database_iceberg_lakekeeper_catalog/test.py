@@ -5,6 +5,7 @@ import time
 import uuid
 from datetime import datetime
 
+import pandas as pd
 import pyarrow as pa
 import pytest
 from pyiceberg.catalog.rest import RestCatalog
@@ -28,9 +29,8 @@ DEFAULT_CREATE_TABLE = "CREATE TABLE {}.`{}.{}`\n(\n    `id` Nullable(Float64),\
 
 
 def create_warehouse(minio_ip):
-    """Create the demo warehouse using the Lakekeeper management API"""
     minio_endpoint = f"http://{minio_ip}:9000"
-    
+
     warehouse_data = {
         "warehouse-name": "demo",
         "project-id": "00000000-0000-0000-0000-000000000000",
@@ -52,7 +52,7 @@ def create_warehouse(minio_ip):
             "aws-secret-access-key": "ClickHouse_Minio_P@ssw0rd"
         }
     }
-    
+
     try:
         response = requests.post(
             "http://localhost:8181/management/v1/warehouse",
@@ -60,14 +60,14 @@ def create_warehouse(minio_ip):
             json=warehouse_data,
             timeout=30
         )
-        
+
         if response.status_code == 201:
-            pass  
+            pass
         elif response.status_code == 409:
-            pass  
+            pass
         else:
             response.raise_for_status()
-            
+
     except requests.exceptions.RequestException as e:
         raise
 
@@ -75,7 +75,7 @@ def create_warehouse(minio_ip):
 def load_catalog_impl(started_cluster):
     minio_ip = started_cluster.get_instance_ip('minio')
     s3_endpoint = f"http://{minio_ip}:9000"
-    
+
     return RestCatalog(
         name="my_catalog",
         warehouse=WAREHOUSE_NAME,
@@ -100,14 +100,14 @@ def started_cluster():
             stay_alive=True,
             with_iceberg_catalog=True,
             extra_parameters={
-                "docker_compose_file_name": "docker_compose_iceberg_apache_lake_keeper_catalog.yml"
+                "docker_compose_file_name": "docker_compose_iceberg_lakekeeper_catalog.yml"
             },
         )
 
         cluster.start()
 
         time.sleep(15)
-        
+
         minio_ip = cluster.get_instance_ip('minio')
         create_warehouse(minio_ip)
 
@@ -119,9 +119,9 @@ def started_cluster():
 def test_list_tables(started_cluster):
     node = started_cluster.instances["node1"]
 
-    root_namespace = f"clickhouse_{uuid.uuid4().hex[:8]}"
-    namespace_1 = f"{root_namespace}_testA"
-    namespace_2 = f"{root_namespace}_testB"
+    namespace_prefix = f"clickhouse_{uuid.uuid4().hex[:8]}"
+    namespace_1 = f"{namespace_prefix}_testA"
+    namespace_2 = f"{namespace_prefix}_testB"
     namespace_1_tables = ["tableA", "tableB"]
     namespace_2_tables = ["tableC", "tableD"]
 
@@ -161,75 +161,78 @@ def test_list_tables(started_cluster):
             tables_list += "\n"
         tables_list += f"{namespace_2}.{table}"
 
+    # Verify tables were created via PyIceberg
+    assert len(catalog.list_tables((namespace_1,))) == 2
+    assert len(catalog.list_tables((namespace_2,))) == 2
+
     assert (
         tables_list
         == node.query(
-            f"SELECT name FROM system.tables WHERE database = '{CATALOG_NAME}' and name ILIKE '{root_namespace}%' ORDER BY name"
+            f"SELECT name FROM system.tables WHERE database = '{CATALOG_NAME}' and name ILIKE '{namespace_prefix}%' ORDER BY name"
         ).strip()
     )
 
 
 def test_select(started_cluster):
-    """Test PyIceberg operations with Lakekeeper catalog"""
-    import pandas as pd
+    """Test select operations with Lakekeeper catalog"""
 
     node = started_cluster.instances["node1"]
-    
+
     catalog = load_catalog_impl(started_cluster)
-    
+
     test_ref = f"test_select_{uuid.uuid4().hex[:8]}"
     test_namespace = (f"{test_ref}_namespace",)
     existing_namespaces = catalog.list_namespaces()
-    
+
     if test_namespace not in existing_namespaces:
         catalog.create_namespace(test_namespace)
-    
+
     test_table_name = f"{test_ref}_table"
     test_table_identifier = test_namespace + (test_table_name,)
-    
+
     try:
         existing_tables = catalog.list_tables(namespace=test_namespace)
-        
+
         if test_table_identifier in existing_tables:
             catalog.drop_table(test_table_identifier)
     except Exception as e:
-        pass  
-    
+        pass
+
     simple_schema = Schema(
         NestedField(field_id=1, name="id", field_type=DoubleType(), required=False),
         NestedField(field_id=2, name="data", field_type=StringType(), required=False),
     )
-    
+
     table = catalog.create_table(
         test_table_identifier,
         schema=simple_schema,
         properties={"write.metadata.compression-codec": "none"},
     )
-    
+
     df = pd.DataFrame(
         {
-            "id": [1.0, 2.0, 3.0, 4.0, 5.0],  
+            "id": [1.0, 2.0, 3.0, 4.0, 5.0],
             "data": ["hello", "world", "from", "lakekeeper", "test"],
         }
     )
-    
+
     pa_df = pa.Table.from_pandas(df)
-    
+
     table.append(pa_df)
-    
+
     scan_result = table.scan().to_pandas()
-    
+
     assert len(scan_result) == 5
-    assert list(scan_result["id"]) == [1.0, 2.0, 3.0, 4.0, 5.0]  
+    assert list(scan_result["id"]) == [1.0, 2.0, 3.0, 4.0, 5.0]
     assert list(scan_result["data"]) == ["hello", "world", "from", "lakekeeper", "test"]
-    
+
     namespaces = catalog.list_namespaces()
-    
+
     tables = catalog.list_tables(namespace=test_namespace)
-    
+
     create_clickhouse_iceberg_database(started_cluster, node, CATALOG_NAME)
 
-    assert 5 == int(node.query(f"SELECT count(*) FROM {CATALOG_NAME}.`{test_namespace[0]}.{test_table_name}`"))
+    assert int(node.query(f"SELECT count(*) FROM {CATALOG_NAME}.`{test_namespace[0]}.{test_table_name}`")) == len(scan_result)
 
     result = node.query(f"SELECT id, data FROM {CATALOG_NAME}.`{test_namespace[0]}.{test_table_name}` ORDER BY id FORMAT TSV")
     expected = TSV("""
@@ -275,9 +278,9 @@ def test_hide_sensitive_info(started_cluster):
     table_name = f"{test_ref}_table"
     root_namespace = f"{test_ref}_namespace"
 
-    namespace = (root_namespace,)  
+    namespace = (root_namespace,)
     catalog = load_catalog_impl(started_cluster)
-    
+
     existing_namespaces = catalog.list_namespaces()
     if namespace not in existing_namespaces:
         catalog.create_namespace(namespace)
@@ -298,7 +301,9 @@ def test_hide_sensitive_info(started_cluster):
         CATALOG_NAME,
         additional_settings={"catalog_credential": "SECRET_1"},
     )
-    assert "SECRET_1" not in node.query(f"SHOW CREATE DATABASE {CATALOG_NAME}")
+    show_result = node.query(f"SHOW CREATE DATABASE {CATALOG_NAME}")
+    assert "SECRET_1" not in show_result
+    assert minio_secret_key not in show_result
 
     create_clickhouse_iceberg_database(
         started_cluster,
@@ -306,10 +311,11 @@ def test_hide_sensitive_info(started_cluster):
         CATALOG_NAME,
         additional_settings={"auth_header": "SECRET_2"},
     )
-    assert "SECRET_2" not in node.query(f"SHOW CREATE DATABASE {CATALOG_NAME}")
+    show_result = node.query(f"SHOW CREATE DATABASE {CATALOG_NAME}")
+    assert "SECRET_2" not in show_result
+    assert minio_secret_key not in show_result
 
 def test_tables_with_same_location(started_cluster):
-    import pandas as pd
 
     node = started_cluster.instances["node1"]
 
@@ -323,7 +329,7 @@ def test_tables_with_same_location(started_cluster):
     existing_namespaces = catalog.list_namespaces()
     if namespace not in existing_namespaces:
         catalog.create_namespace(namespace)
-        
+
     schema = Schema(
         NestedField(field_id=1, name="id", field_type=DoubleType(), required=False),
         NestedField(field_id=2, name="symbol", field_type=StringType(), required=False),
@@ -358,4 +364,4 @@ def test_tables_with_same_location(started_cluster):
     assert 'bbb\nbbb\nbbb' == node.query(
         f"SELECT symbol FROM {CATALOG_NAME}.`{namespace[0]}.{table_name_2}`"
     ).strip()
-    
+

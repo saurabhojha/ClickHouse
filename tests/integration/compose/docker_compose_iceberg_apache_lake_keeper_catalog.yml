@@ -6,6 +6,7 @@ services:
       - LAKEKEEPER__PG_DATABASE_URL_READ=postgresql://postgres:postgres@db:5432/postgres
       - LAKEKEEPER__PG_DATABASE_URL_WRITE=postgresql://postgres:postgres@db:5432/postgres
       - RUST_LOG=info
+      - LAKEKEEPER__AUTH__DISABLED=true
     command: ["serve"]
     healthcheck:
       test: ["CMD", "/home/nonroot/lakekeeper", "healthcheck"]
@@ -31,6 +32,7 @@ services:
       - LAKEKEEPER__PG_DATABASE_URL_READ=postgresql://postgres:postgres@db:5432/postgres
       - LAKEKEEPER__PG_DATABASE_URL_WRITE=postgresql://postgres:postgres@db:5432/postgres
       - RUST_LOG=info
+      - LAKEKEEPER__AUTH__DISABLED=true
     restart: "no"
     command: ["migrate"]
     depends_on:
@@ -57,6 +59,21 @@ services:
       - '{"accept-terms-of-use": true}'
       - "-o"
       - "/dev/null"
+
+  bootstrap-acl:
+    image: curlimages/curl
+    depends_on:
+      lakekeeper:
+        condition: service_healthy
+    restart: "no"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        curl -X POST "http://lakekeeper:8181/auth/v1/acl" \
+          -H "Content-Type: application/json" \
+          -d '{"subject": "Anonymous", "role": "admin", "scope": {"namespace": []}}'
+
 
 
 

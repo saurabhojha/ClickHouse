@@ -283,7 +283,7 @@ DB::ReadWriteBufferFromHTTPPtr RestCatalog::createReadBuffer(
             .create(credentials);
     };
 
-    LOG_TEST(log, "Requesting: {}", url.toString());
+    LOG_INFO(log, "Requesting: {}", url.toString());
 
     try
     {

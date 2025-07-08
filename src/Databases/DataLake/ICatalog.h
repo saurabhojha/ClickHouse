@@ -11,7 +11,7 @@ namespace DataLake
 
 using StorageType = DB::DatabaseDataLakeStorageType;
 StorageType parseStorageTypeFromLocation(const std::string & location);
-static StorageType parseStorageTypeFromString(const std::string &type);
+StorageType parseStorageTypeFromString(const std::string &type);
 
 struct DataLakeSpecificProperties
 {

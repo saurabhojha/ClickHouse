@@ -26,13 +26,11 @@ StorageType parseStorageTypeFromLocation(const std::string & location)
             DB::ErrorCodes::NOT_IMPLEMENTED,
             "Unexpected path format: {}", location);
     }
-    if(storage_type_str.empty())
-        storage_type_str = location.substr(0, pos);
 
-    return parseStorageTypeFromString(storage_type_str);
+    return parseStorageTypeFromString(location.substr(0, pos));
 }
 
-static StorageType parseStorageTypeFromString(const std::string & type)
+StorageType parseStorageTypeFromString(const std::string & type)
 {
     auto capitalize_first_letter = [] (const std::string & s)
     {
@@ -200,7 +198,6 @@ std::string TableMetadata::getMetadataLocation(const std::string & iceberg_metad
     if (!metadata_location.empty())
     {
         std::string data_location = getLocation();
-        const std::string & endpoint = getEndpoint();
 
         // Use the actual storage type prefix (e.g., s3://, file://, etc.)
         if (metadata_location.starts_with(storage_type_str))

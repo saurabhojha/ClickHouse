@@ -2,7 +2,7 @@ name: Build ClickHouse Server (Fork)
 
 on:
   push:
-    branches: [ main, master, develop, feature/*, bugfix/*, release/* ]
+    branches: [ main, master, develop*, feature/*, bugfix/*, release/* ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main, master, develop ]
